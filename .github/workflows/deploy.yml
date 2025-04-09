@@ -1,0 +1,44 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies & build
+        run: |
+          npm install
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+
+      - name: Build, tag, and push image
+        run: |
+          docker build -t ${{ secrets.ECR_REPO }} .
+          docker tag ${{ secrets.ECR_REPO }}:latest ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO }}:latest
+          docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO }}:latest
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service --cluster react-cluster --service react-app-service --force-new-deployment
